@@ -809,6 +809,17 @@ class AxolotlInputConfig(
             "description": "Number of tensor parallel processes in TP group. Only supported with DeepSpeed AutoTP."
         },
     )
+    expert_parallel_size: int | None = Field(
+        default=None,
+        json_schema_extra={
+            "description": (
+                "Number of expert parallel ranks for MoE models. "
+                "Each rank owns and computes num_experts / expert_parallel_size experts. "
+                "Requires use_scattermoe: true and world_size divisible by expert_parallel_size. "
+                "Currently supported model types: qwen3_moe, qwen2_moe."
+            )
+        },
+    )
     special_tokens: SpecialTokensConfig | None = Field(
         default=None,
         json_schema_extra={

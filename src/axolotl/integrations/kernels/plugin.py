@@ -6,7 +6,6 @@ from kernels import (
 )
 
 from axolotl.integrations.base import BasePlugin
-from axolotl.utils.callbacks.models import get_causal_lm_model_cls_prefix
 
 
 class KernelsPlugin(BasePlugin):
@@ -16,7 +15,20 @@ class KernelsPlugin(BasePlugin):
     def pre_model_load(self, cfg):
         if cfg.use_scattermoe:
             self._register_kernels()
-            self._kernelize_model(cfg.model_config_type)
+            ep_size = getattr(cfg, "expert_parallel_size", None)
+            if not ep_size or ep_size <= 1:
+                # Single-rank ScatterMoE: patch the block class so that the
+                # kernels library swaps the forward when use_kernels=True loads.
+                self._kernelize_model(cfg.model_config_type)
+            # For EP > 1: block-level patching happens in post_model_load once
+            # the model instances exist and distributed is initialised.
+
+    def post_model_load(self, cfg, model):
+        ep_size = getattr(cfg, "expert_parallel_size", None)
+        if getattr(cfg, "use_scattermoe", False) and ep_size and ep_size > 1:
+            from axolotl.integrations.kernels.ep import apply_ep_scattermoe
+
+            apply_ep_scattermoe(model, cfg.model_config_type, ep_size)
 
     def _register_kernels(self):
         register_kernel_mapping(
@@ -37,6 +49,8 @@ class KernelsPlugin(BasePlugin):
         )
 
     def _kernelize_model(self, model_type: str):
+        from axolotl.integrations.kernels.ep import get_model_moe_block
+
         if model_type == "olmoe":
             from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
 
@@ -51,11 +65,3 @@ class KernelsPlugin(BasePlugin):
                 )
             except Exception as err:
                 raise ValueError(f"Unsupported model type: {model_type}") from err
-
-
-def get_model_moe_block(model_type: str):
-    module_path = f"transformers.models.{model_type}.modeling_{model_type}"
-    model_cls_prefix, _ = get_causal_lm_model_cls_prefix(model_type)
-    module = __import__(module_path, fromlist=[f"{model_cls_prefix}SparseMoeBlock"])
-    model_cls = getattr(module, f"{model_cls_prefix}SparseMoeBlock")
-    return model_cls
