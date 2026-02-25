@@ -51,7 +51,7 @@ class SchedulerMixin(Trainer):
             plugin_manager = PluginManager.get_instance()
             lr_scheduler: LRScheduler | None = plugin_manager.create_lr_scheduler(
                 trainer=self,
-                optimizer=optimizer,
+                optimizer=self.optimizer,
                 num_training_steps=num_training_steps
             )
             if lr_scheduler is not None:
@@ -67,7 +67,7 @@ class SchedulerMixin(Trainer):
                     extra_lr_kwargs["anneal_strategy"] = "cos"
 
                 self.lr_scheduler = OneCycleLR(
-                    optimizer,
+                    self.optimizer,
                     max_lr=self.args.learning_rate,
                     total_steps=num_training_steps,
                     **extra_lr_kwargs,
@@ -78,7 +78,7 @@ class SchedulerMixin(Trainer):
                     assert 0 <= self.args.cosine_min_lr_ratio <= 1.0, "cosine_min_lr_ratio must be between 0.0 and 1.0"
 
                 self.lr_scheduler = RexLR(
-                    optimizer=optimizer,
+                    optimizer=self.optimizer,
                     max_lr=self.args.learning_rate,
                     min_lr=0 if not use_cosine_min_lr else (
                         self.args.learning_rate * self.args.cosine_min_lr_ratio),
@@ -91,7 +91,7 @@ class SchedulerMixin(Trainer):
                         "Both cosine quadratic warmup and min lr detected. Using quadratic warmup.")
 
                 self.lr_scheduler = get_cosine_schedule_with_quadratic_warmup(
-                    optimizer,
+                    self.optimizer,
                     num_warmup_steps=self.args.get_warmup_steps(num_training_steps),
                     num_training_steps=num_training_steps,
                 )
@@ -99,7 +99,7 @@ class SchedulerMixin(Trainer):
                 assert 0 <= self.args.cosine_min_lr_ratio <= 1.0, "cosine_min_lr_ratio must be between 0.0 and 1.0"
                 assert 0 <= self.args.cosine_constant_lr_ratio <= 1.0, "cosine_constant_lr_ratio must be between 0.0 and 1.0"
                 self.lr_scheduler = get_cosine_schedule_with_warmup_decay_constant(
-                    optimizer,
+                    self.optimizer,
                     num_warmup_steps=self.args.get_warmup_steps(num_training_steps),
                     num_training_steps=num_training_steps,
                     min_lr_ratio=self.args.cosine_min_lr_ratio,
@@ -108,13 +108,13 @@ class SchedulerMixin(Trainer):
             elif self.args.cosine_min_lr_ratio and use_cosine_min_lr:
                 assert 0 <= self.args.cosine_min_lr_ratio <= 1.0, "cosine_min_lr_ratio must be between 0.0 and 1.0"
                 self.lr_scheduler = get_cosine_schedule_with_min_lr(
-                    optimizer,
+                    self.optimizer,
                     num_warmup_steps=self.args.get_warmup_steps(num_training_steps),
                     num_training_steps=num_training_steps,
                     min_lr_ratio=self.args.cosine_min_lr_ratio,
                 )
             else:
-                super().create_scheduler(num_training_steps, optimizer=optimizer)
+                super().create_scheduler(num_training_steps, optimizer=self.optimizer)
         else:
             if use_cosine_quadratic:
                 LOG.warning(
@@ -132,9 +132,9 @@ class SchedulerMixin(Trainer):
                 self.args.jagged_restart_anneal_steps or 1
             )
             if not self.lr_scheduler:
-                super().create_scheduler(num_training_steps, optimizer)
+                super().create_scheduler(num_training_steps, self.optimizer)
             self.lr_scheduler = JaggedLRRestartScheduler(
-                optimizer,
+                self.optimizer,
                 self.lr_scheduler,
                 self.args.jagged_restart_steps,
                 warmup_steps,
